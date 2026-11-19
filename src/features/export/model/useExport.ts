@@ -1,5 +1,6 @@
 import { ref } from "vue";
 import type { StudioDocument, ExportSettings } from "../../../shared/types";
+import { interruptMotion } from "../../../shared/motion";
 import { encodeImage } from "../lib/encode";
 export function useExport(doc: StudioDocument) {
   const busy = ref(false),
@@ -8,6 +9,8 @@ export function useExport(doc: StudioDocument) {
   let controller: AbortController | null = null;
   async function download(settings: ExportSettings) {
     if (!doc.asset || busy.value) return;
+    // 冻结取景：终止惯性等未结束的异步运动，快照即用户触发瞬间的实际取景
+    interruptMotion();
     busy.value = true;
     progress.value = 0;
     message.value = "";

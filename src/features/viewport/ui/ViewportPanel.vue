@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { onBeforeUnmount, ref } from "vue";
 import {
   Move,
   Maximize,
@@ -8,33 +8,31 @@ import {
   Minus,
   ScanLine,
 } from "lucide-vue-next";
-import type { StudioDocument, Projection } from "../../../shared/types";
+import type { StudioDocument } from "../../../shared/types";
+import { interruptMotion } from "../../../shared/motion";
 import { usePreview } from "../model/usePreview";
-import { dragView, wheelZoom } from "../lib/gestures";
+import { createGestures, wheelZoom } from "../lib/gestures";
 const { doc } = defineProps<{ doc: StudioDocument }>();
 const canvas = ref<HTMLCanvasElement>();
+const wrap = ref<HTMLElement>();
 const { rendering } = usePreview(doc, canvas);
 const guides = ref(false);
-let start: { x: number; y: number; p: Projection } | null = null;
-function down(e: PointerEvent) {
-  if (e.button !== 0) return;
-  start = { x: e.clientX, y: e.clientY, p: { ...doc.projection } };
-  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-}
-function move(e: PointerEvent) {
-  if (!start) return;
-  Object.assign(
-    doc.projection,
-    dragView(
-      start.p,
-      e.clientX - start.x,
-      e.clientY - start.y,
-      (e.currentTarget as HTMLElement).clientWidth,
-    ),
-  );
-}
+const gestures = createGestures({
+  projection: doc.projection,
+  rect: () => wrap.value?.getBoundingClientRect() ?? null,
+});
+onBeforeUnmount(() => gestures.destroy());
 function wheel(e: WheelEvent) {
+  interruptMotion();
   doc.projection.zoom = wheelZoom(doc.projection.zoom, e.deltaY);
+}
+function zoomBy(delta: number) {
+  interruptMotion();
+  doc.projection.zoom = wheelZoom(doc.projection.zoom, delta);
+}
+function resetZoom() {
+  interruptMotion();
+  doc.projection.zoom = 1;
 }
 </script>
 <template>
@@ -54,13 +52,14 @@ function wheel(e: WheelEvent) {
         / 01</span
       >
       <div
+        ref="wrap"
         class="canvas-wrap"
         :class="{ guides }"
-        @pointerdown="down"
-        @pointermove="move"
-        @pointerup="start = null"
-        @pointercancel="start = null"
-        @lostpointercapture="start = null"
+        @pointerdown="gestures.down"
+        @pointermove="gestures.move"
+        @pointerup="gestures.up"
+        @pointercancel="gestures.cancel"
+        @lostpointercapture="gestures.lostcapture"
         @wheel.prevent="wheel"
       >
         <canvas ref="canvas" aria-label="小行星实时投影画布" />
@@ -73,20 +72,14 @@ function wheel(e: WheelEvent) {
     </div>
     <div class="viewport-toolbar">
       <div class="gesture-hint">
-        <MousePointer2 :size="14" /> 拖动旋转 <span>·</span
-        ><Move :size="14" /> 滚轮缩放
+        <MousePointer2 :size="14" /> 拖动抓取画面 <span>·</span
+        ><Move :size="14" /> 双指旋转缩放 · 滚轮缩放
       </div>
       <div class="tool-buttons">
-        <button
-          aria-label="缩小"
-          @click="doc.projection.zoom = wheelZoom(doc.projection.zoom, 100)"
-        >
+        <button aria-label="缩小" @click="zoomBy(100)">
           <Minus :size="16" /></button
         ><span>{{ Math.round(doc.projection.zoom * 100) }}%</span
-        ><button
-          aria-label="放大"
-          @click="doc.projection.zoom = wheelZoom(doc.projection.zoom, -100)"
-        >
+        ><button aria-label="放大" @click="zoomBy(-100)">
           <Plus :size="16" /></button
         ><b /><button
           aria-label="切换辅助线"
@@ -94,7 +87,7 @@ function wheel(e: WheelEvent) {
           @click="guides = !guides"
         >
           <ScanLine :size="17" /></button
-        ><button aria-label="重置缩放" @click="doc.projection.zoom = 1">
+        ><button aria-label="重置缩放" @click="resetZoom">
           <Maximize :size="16" />
         </button>
       </div>

@@ -1,11 +1,14 @@
 import type { Projection } from "../../../shared/types";
 import { clamp, wrap } from "../../../shared/math";
+import { interruptMotion } from "../../../shared/motion";
 import { defaultProjection } from "../../../shared/defaults";
 export function updateProjection(
   p: Projection,
   key: keyof Projection,
   value: number | string,
 ) {
+  // 滑块、模式切换等显式输入优先于进行中的惯性滑行
+  interruptMotion();
   if (key === "mode") {
     p.mode = value === "tunnel" ? "tunnel" : "planet";
     return;
@@ -17,5 +20,6 @@ export function updateProjection(
   if (key === "pitch") p.pitch = clamp(n, -85, 85);
 }
 export function resetProjection(p: Projection) {
+  interruptMotion();
   Object.assign(p, defaultProjection());
 }
